@@ -1,0 +1,39 @@
+# Revue automatique de chaque PR par le panel avocat-du-diable (mode audit).
+# Prérequis : secret de dépôt OPENROUTER_API_KEY. Modèles : variable de dépôt PANEL_MODELES (défaut : sol).
+name: Revue Sol
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  revue:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Tests
+        run: node --test "tests/*.test.mjs"
+      - name: Panel
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          MODELES: ${{ vars.PANEL_MODELES || 'sol' }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then echo "Secret OPENROUTER_API_KEY absent : revue ignorée."; exit 0; fi
+          ARGS=()
+          while IFS= read -r f; do ARGS+=(--fichier "$f"); done < <(git diff --name-only --diff-filter=AM "$BASE" HEAD -- '*.md' '*.mjs' '*.ps1' '*.yml')
+          if [ ${#ARGS[@]} -eq 0 ]; then echo "Aucun fichier à revoir."; exit 0; fi
+          node outils/panel.mjs --mode audit "${ARGS[@]}" --modeles "$MODELES" --sortie _panel/pr --confirme-anonymise \
+            --contexte "Dépôt de skills et d'outils pour essaims de sous-agents Claude. Critères : exactitude, robustesse en concurrence, sécurité (secrets, injection de chemins), cohérence entre les skills et les outils, portabilité Windows."
+      - name: Commentaire
+        if: hashFiles('_panel/pr/bilan.json') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo "## Revue automatique — panel avocat-du-diable"; for f in _panel/pr/*.md; do echo; cat "$f"; done; } > revue.md
+          gh pr comment ${{ github.event.pull_request.number }} --body-file revue.md
