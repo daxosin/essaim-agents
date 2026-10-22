@@ -1,13 +1,11 @@
 ---
 name: avocat-du-diable
-description: Panel multi-modèles en aveugle (Fable, Opus, GPT-6.1 Sol, DeepSeek, Kimi) pour auditer un livrable ou contredire une décision, avec matrice de convergence. Active avec « avocat du diable », « audit multi-modèles », « panel », « fais auditer », « contredis cette décision », « revue Sol », « revue croisée ».
+description: Fait auditer un livrable ou contredire une décision par UN modèle qu'Emmanuel choisit à chaque appel (Fable, Opus, GPT-6.1 Sol, DeepSeek, Kimi). Active avec « avocat du diable », « audit Sol », « audit Kimi », « audit DeepSeek », « audit Fable », « audit Opus », « contredis avec … », « fais relire par … ».
 ---
 
-# Avocat du diable — panel multi-modèles
+# Avocat du diable — un modèle, choisi par Emmanuel
 
-Un même objet est soumis **en aveugle et en parallèle** à cinq modèles de trois familles d'entraînement différentes. Un défaut relevé par plusieurs familles est un signal fort ; un défaut relevé par un seul modèle est une piste à examiner, pas une conclusion.
-
-Panel par défaut :
+Chaque appel soumet **un seul objet à un seul modèle**, celui qu'Emmanuel nomme. Jamais de lancement groupé, jamais de modèle choisi à sa place. Pour un second avis, il relance la skill avec un autre modèle.
 
 | Alias | Modèle | Voie |
 |---|---|---|
@@ -17,75 +15,59 @@ Panel par défaut :
 | `deepseek` | DeepSeek V4 Pro | OpenRouter |
 | `kimi` | Kimi K3 | OpenRouter |
 
-L'outil est `panel.mjs` : le chercher dans `outils/` du projet, puis dans `~/.claude/outils/`. Les identifiants OpenRouter sont dans sa table `MODELES`. Un modèle plus récent sort → mettre à jour cette table, pas la skill.
+L'outil est `avocat.mjs` : le chercher dans `outils/` du projet, puis dans `~/.claude/outils/`. Les identifiants OpenRouter sont dans sa table `MODELES`. Un modèle plus récent sort → mettre à jour cette table, pas la skill. Tout autre modèle OpenRouter s'appelle par son identifiant complet (`--modele x-ai/grok-9`).
 
 ## Deux modes
 
-- **audit** — un livrable existe (document, code, SOP, PRD) : trouver ses erreurs. Rend un tableau de défauts classés bloquant / majeur / mineur, un angle mort et un verdict.
-- **contradiction** — une décision, une thèse ou un plan : construire le meilleur cas contre. Rend l'objection principale, les hypothèses fragiles, un pré-mortem, l'alternative écartée à tort et ce qui ferait changer d'avis.
+- **audit** — un livrable existe (document, code, SOP, PRD) : trouver ses erreurs. Rend un tableau de défauts classés bloquant / majeur / mineur, un angle mort, un verdict.
+- **contradiction** — une décision, une thèse, un plan : construire le meilleur cas contre. Rend l'objection principale, les hypothèses fragiles, un pré-mortem, l'alternative écartée à tort, ce qui ferait changer d'avis.
 
-## Étape 1 — Cadrer (3 questions maximum)
+## Étape 1 — Cadrer
 
-- **Objet** : quels fichiers, ou quelle décision en quelques lignes ?
-- **Mode** : audit ou contradiction ?
-- **Critères** : ce que l'objet doit satisfaire (référentiel, exigences, contraintes). Sans critères, les auditeurs jugent au goût.
+Déduire de la demande :
+- **Modèle** : celui qu'Emmanuel a nommé. **S'il n'en a nommé aucun, le lui demander** — une seule question, sans recommandation par défaut.
+- **Objet** : quels fichiers, ou quelle décision en quelques lignes.
+- **Mode** : audit si un livrable existe, contradiction si c'est un choix. En cas de doute, demander.
+- **Critères** : ce que l'objet doit satisfaire. Sans critères, le modèle juge au goût ; les demander si absents.
+- **Sujet** : un nom court (`prd-agent-securite`). Les revues d'un même sujet s'accumulent dans `_avocat/<sujet>/`.
 
-Panel : cinq modèles par défaut ; « panel léger » = `sol,deepseek,kimi` (le moins cher, trois familles hors Claude).
+## Étape 2 — Confidentialité (bloquant, sauf Fable et Opus en sous-agents)
 
-## Étape 2 — Contrôle de confidentialité (bloquant)
+Par OpenRouter, l'objet part chez un fournisseur tiers ; DeepSeek et Moonshot (Kimi) peuvent être hébergés hors de l'UE.
+- **Interdit** : donnée de santé, donnée nominative (patient, salarié), extrait de PRAQ, Supabase ou LQO.
+- **À signaler avant envoi** : document interne non public (conditions commerciales, organisation, sécurité du parc d'outils).
+- `avocat.mjs` bloque de lui-même les motifs évidents (numéro de sécurité sociale, e-mail, téléphone, mention de patient). Ce filtre est grossier : il ne remplace pas la relecture, et produit des faux positifs. `--confirme-anonymise` ne se passe qu'après relecture humaine.
+- Les requêtes demandent `data_collection: deny` à OpenRouter, ce qui écarte les fournisseurs conservant ou entraînant sur les données. Cela réduit le risque sans l'annuler.
 
-L'objet part chez des fournisseurs tiers, dont DeepSeek et Moonshot (Kimi), hébergés hors de l'UE selon le routage OpenRouter.
-- **Interdit** : toute donnée de santé, donnée nominative (patient, salarié), extrait de PRAQ, Supabase ou LQO. Aucune exception, même anonymisée à la main sans relecture.
-- **À signaler à Emmanuel avant envoi** : document interne non public (conditions commerciales, organisation, sécurité du parc d'outils).
-- `panel.mjs` bloque de lui-même sur les motifs évidents (numéro de sécurité sociale, e-mail, téléphone, mention de patient). Ce filtre est grossier : il ne remplace pas la relecture, et il produit des faux positifs (un texte qui parle de patients sans en nommer). `--confirme-anonymise` ne se passe qu'après relecture humaine.
-- Les requêtes demandent `data_collection: deny` à OpenRouter, qui écarte les fournisseurs conservant ou entraînant sur les données. Cela réduit le risque sans l'annuler.
+## Étape 3 — Estimer, puis « go »
 
-## Étape 3 — Estimer et obtenir le « go »
-
+Pour un modèle passant par OpenRouter :
 ```
-node outils/panel.mjs --mode <mode> --fichier <f> [--contexte "<critères>"] --estimer
+node outils/avocat.mjs --modele <alias> --mode <mode> --fichier <f> --contexte "<critères>" --estimer
 ```
-Présenter : objet, mode, panel, coût estimé. Lancer seulement après le « go » d'Emmanuel.
+Présenter en une ligne : modèle, mode, objet, coût estimé. Lancer seulement après le « go » d'Emmanuel.
 
 ## Étape 4 — Lancer
 
-**Prompt identique pour tous** — sinon la comparaison ne vaut rien :
+**Fable ou Opus, avec un outil de sous-agents disponible** (gratuit au-delà de l'abonnement, rien ne sort de Claude) :
+1. `node outils/avocat.mjs --mode <mode> --fichier <f> --contexte "<critères>" --sujet <sujet> --prompt-seul` écrit le prompt exact.
+2. Lancer **un** sous-agent (paramètre `model` : `fable` ou `opus`) avec le contenu intégral de ce prompt, et la consigne d'écrire sa réponse dans `_avocat/<sujet>/<horodatage>-<alias>-<mode>.md` sans rien modifier d'autre.
+
+**Tous les autres cas** :
 ```
-node outils/panel.mjs --mode <mode> --fichier <f> --contexte "<critères>" --sortie _panel/<sujet> --prompt-seul
+node outils/avocat.mjs --modele <alias> --mode <mode> --fichier <f> --contexte "<critères>" --sujet <sujet>
 ```
-écrit `_panel/<sujet>/prompt.md`.
+La clé est lue dans `OPENROUTER_API_KEY`. Ne jamais la demander dans la conversation, ne jamais l'écrire dans un fichier. En cas d'échec (clé, quota, modèle indisponible), rapporter l'erreur telle quelle et s'arrêter : ne pas basculer sur un autre modèle sans l'accord d'Emmanuel.
 
-- **Outil de sous-agents disponible** : lancer Fable et Opus en sous-agents (paramètre `model` : `fable`, `opus`), dans le même message, chacun avec le contenu intégral de `prompt.md` et la consigne d'écrire sa réponse dans `_panel/<sujet>/fable.md` ou `opus.md`. En parallèle :
-  ```
-  node outils/panel.mjs ... --sortie _panel/<sujet> --modeles sol,deepseek,kimi
-  ```
-- **Sinon** : tout passe par OpenRouter (`--modeles sol,deepseek,kimi,fable,opus`).
+## Étape 5 — Remise
 
-La clé est lue dans `OPENROUTER_API_KEY`. Ne jamais la demander dans la conversation, ne jamais l'écrire dans un fichier.
+1. Livrer la réponse du modèle **intégralement**, sans la reformuler ni la filtrer, en indiquant le modèle.
+2. Ajouter au plus trois lignes de lecture, séparées et signées comme lecture de Claude : les points à vérifier avant d'y croire (référence citée, chiffre, comportement de code), et tout désaccord net de Claude avec un point du modèle, argumenté.
+3. **Ne rien corriger automatiquement.** Emmanuel décide de ce qui est retenu.
 
-Un modèle en échec n'arrête pas le panel : `bilan.json` le signale, la synthèse le mentionne.
-
-## Étape 5 — Synthèse : matrice de convergence
-
-Lire toutes les réponses de `_panel/<sujet>/`, puis regrouper les défauts ou objections **identiques sur le fond**, même formulés différemment.
-
-| # | Défaut / objection | Fable | Opus | Sol | DeepSeek | Kimi | Familles | Gravité max |
-|---|---|---|---|---|---|---|---|---|
-
-- **Familles** : Anthropic (Fable, Opus), OpenAI (Sol), DeepSeek, Moonshot (Kimi). Fable et Opus d'accord ne comptent que pour une famille : ils partagent des biais d'entraînement.
-- **Tri** : familles décroissantes, puis gravité.
-- **≥ 3 familles** → quasi certain, à traiter.
-- **1 seule famille** → à vérifier soi-même avant de le présenter comme un défaut. Vérifier ne veut pas dire écarter : l'objection isolée est souvent la plus utile.
-- **Contradictions entre modèles** (l'un juge correct ce qu'un autre juge faux) : les lister à part, avec les deux arguments, sans trancher.
-- Ligne finale : les verdicts des cinq modèles.
-
-Le synthétiseur est un Claude : il doit se méfier de sa propre tendance à surpondérer Fable et Opus. Chaque ligne de la matrice cite le modèle source.
-
-## Étape 6 — Remise
-
-Livrer la matrice, puis en trois lignes au plus : ce qui fait consensus, l'objection isolée la plus sérieuse, la question qu'Emmanuel doit trancher. **Ne rien corriger automatiquement** : Emmanuel décide de ce qui est retenu. Les réponses brutes restent dans `_panel/<sujet>/` pour traçabilité.
+Si `_avocat/<sujet>/` contient déjà des revues d'autres modèles, le signaler en une ligne. Comparer les revues **seulement si Emmanuel le demande** : tableau des défauts communs et propres à chaque modèle, en rappelant que Fable et Opus partagent des biais d'entraînement.
 
 ## Articulation avec les autres skills
 
-- **essaim** : c'est la surcouche « Débat » (mode contradiction) ou la « Boucle » à diversité maximale (mode audit) d'un essaim.
-- **cadrage-socratique-avant-build** : remplace ou complète la relecture par le seul avocat du diable Fable quand la décision engage de l'argent, des données ou plusieurs mois de travail.
+- **essaim** : c'est la surcouche « Boucle » (mode audit) ou « Débat » (mode contradiction) avec un modèle d'une autre famille.
+- **cadrage-socratique-avant-build** : permet de faire relire une décision validée par un autre modèle que Fable.

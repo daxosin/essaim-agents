@@ -1,5 +1,5 @@
-# Revue automatique de chaque PR par le panel avocat-du-diable (mode audit).
-# Prérequis : secret de dépôt OPENROUTER_API_KEY. Modèles : variable de dépôt PANEL_MODELES (défaut : sol).
+# Revue automatique de chaque PR par GPT-6.1 Sol (skill avocat-du-diable, mode audit).
+# Prérequis : secret de dépôt OPENROUTER_API_KEY. Autre modèle : variable de dépôt AVOCAT_MODELE (défaut : sol).
 name: Revue Sol
 on:
   pull_request:
@@ -18,22 +18,23 @@ jobs:
         with: { node-version: 22 }
       - name: Tests
         run: node --test "tests/*.test.mjs"
-      - name: Panel
+      - name: Revue
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           BASE: ${{ github.event.pull_request.base.sha }}
-          MODELES: ${{ vars.PANEL_MODELES || 'sol' }}
+          MODELE: ${{ vars.AVOCAT_MODELE || 'sol' }}
         run: |
           if [ -z "$OPENROUTER_API_KEY" ]; then echo "Secret OPENROUTER_API_KEY absent : revue ignorée."; exit 0; fi
           ARGS=()
-          while IFS= read -r f; do ARGS+=(--fichier "$f"); done < <(git diff --name-only --diff-filter=AM "$BASE" HEAD -- '*.md' '*.mjs' '*.ps1' '*.yml')
+          while IFS= read -r -d '' f; do ARGS+=(--fichier "$f"); done < <(git diff -z --name-only --diff-filter=AM "$BASE" HEAD -- '*.md' '*.mjs' '*.ps1' '*.yml')
           if [ ${#ARGS[@]} -eq 0 ]; then echo "Aucun fichier à revoir."; exit 0; fi
-          node outils/panel.mjs --mode audit "${ARGS[@]}" --modeles "$MODELES" --sortie _panel/pr --confirme-anonymise \
+          node outils/avocat.mjs --modele "$MODELE" --mode audit "${ARGS[@]}" --sujet pr --confirme-anonymise \
             --contexte "Dépôt de skills et d'outils pour essaims de sous-agents Claude. Critères : exactitude, robustesse en concurrence, sécurité (secrets, injection de chemins), cohérence entre les skills et les outils, portabilité Windows."
       - name: Commentaire
-        if: hashFiles('_panel/pr/bilan.json') != ''
+        if: hashFiles('_avocat/pr/journal.jsonl') != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
-          { echo "## Revue automatique — panel avocat-du-diable"; for f in _panel/pr/*.md; do echo; cat "$f"; done; } > revue.md
-          gh pr comment ${{ github.event.pull_request.number }} --body-file revue.md
+          { echo "## Revue automatique — avocat du diable"; for f in _avocat/pr/*-audit.md; do echo; cat "$f"; done; } > revue.md
+          gh pr comment "$PR" --body-file revue.md

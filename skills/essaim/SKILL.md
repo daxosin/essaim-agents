@@ -51,7 +51,7 @@ Seulement si D = santé, réglementaire, production ou décision. Une seule surc
 |---|---|---|
 | Erreur de **jugement** sur une réponse fermée (classer, coter, oui/non) | **Vote** | 3 agents indépendants, même consigne, sans se voir. Unanimité → accepté. Désaccord → escalade à Emmanuel avec les 3 avis. |
 | Livrable **perfectible** contre des critères (document, code, procédure) | **Boucle** producteur → critique | Critique aveugle (n'a vu ni l'historique ni le raisonnement), consigne : trouver les erreurs, pas confirmer. 3 tours max ; si le critique bloque encore, escalade. Un seul tour = « critique aveugle ». |
-| **Choix** entre options, décision stratégique, biais possible | **Débat** | Un agent défend, un agent attaque, un juge synthétise les arguments sans trancher. Emmanuel tranche. Version multi-modèles : skill `avocat-du-diable`, mode contradiction. |
+| **Choix** entre options, décision stratégique, biais possible | **Débat** | Un agent défend, un agent attaque, un juge synthétise les arguments sans trancher. Emmanuel tranche. Pour faire attaquer par un modèle d'une autre famille : skill `avocat-du-diable`, mode contradiction, modèle choisi par Emmanuel. |
 
 Repères (domaine d'Emmanuel) :
 
@@ -141,7 +141,7 @@ Retour final : 5 lignes maximum.
 Lancer 3 agents avec la même consigne, sans qu'ils se voient. Comparer les réponses fermées ; présenter les désaccords à Emmanuel sans les arbitrer.
 
 ### Boucle (critique aveugle)
-Le critique reçoit le livrable et les critères, jamais l'historique ni le raisonnement de production (sous-agent `critique` en Claude Code). Il rend une liste d'erreurs classées bloquant / majeur / mineur, avec localisation. Le producteur corrige les bloquants et majeurs, puis nouveau tour. Une revue par un modèle d'un autre fournisseur (skill `avocat-du-diable`, mode audit : Sol, DeepSeek, Kimi, Fable, Opus) est une critique aveugle de plus grande diversité.
+Le critique reçoit le livrable et les critères, jamais l'historique ni le raisonnement de production (sous-agent `critique` en Claude Code). Il rend une liste d'erreurs classées bloquant / majeur / mineur, avec localisation. Le producteur corrige les bloquants et majeurs, puis nouveau tour. Un critique d'une autre famille de modèles apporte plus de diversité : skill `avocat-du-diable`, mode audit, avec le modèle qu'Emmanuel choisit (Sol, DeepSeek, Kimi, Fable ou Opus).
 
 ### Débat
 Deux agents, deux consignes opposées (« défends X », « attaque X »), mêmes faits. Un juge reçoit les deux plaidoiries et rend : arguments décisifs de chaque côté, faits contestés, ce qui ferait basculer. Il ne tranche pas.

@@ -3,7 +3,7 @@
 Deux skills et leurs outils pour faire travailler des sous-agents Claude **à bon escient** :
 
 - **`essaim`** — skill primaire : qualifie la nature d'un travail, choisit l'architecture de répartition et la surcouche qualité, fait valider le plan, puis pilote les agents.
-- **`avocat-du-diable`** — panel multi-modèles en aveugle (Claude Fable 5.1, Claude Opus 5.5, GPT-6.1 Sol, DeepSeek V4 Pro, Kimi K3) pour auditer un livrable ou contredire une décision, avec matrice de convergence.
+- **`avocat-du-diable`** — fait auditer un livrable ou contredire une décision par **un** modèle que tu choisis à chaque appel : Claude Fable 5.1, Claude Opus 5.5, GPT-6.1 Sol, DeepSeek V4 Pro ou Kimi K3.
 
 ## Pourquoi
 
@@ -43,7 +43,7 @@ cd essaim-agents
 .\install.ps1 -Global                                # pour tous les projets (~\.claude)
 ```
 
-Le script vérifie Node 18+, copie skills, agents et outils (avec sauvegarde `.bak-` de toute version locale différente), ajoute `_milieu/` et `_panel/` au `.gitignore` du projet, lance les tests et signale si la clé OpenRouter manque.
+Le script vérifie Node 18+, copie skills, agents et outils (avec sauvegarde `.bak-` de toute version locale différente), ajoute `_milieu/` et `_avocat/` au `.gitignore` du projet, lance les tests et signale si la clé OpenRouter manque.
 
 Clé OpenRouter (pour `avocat-du-diable`), une seule fois :
 ```powershell
@@ -54,35 +54,35 @@ Clé OpenRouter (pour `avocat-du-diable`), une seule fois :
 
 Dans Claude Code :
 - « essaim : auditer la sécurité de mes outils » → qualification, fiche de déploiement à valider, puis lancement.
-- « avocat du diable sur ce PRD » → cadrage, contrôle de confidentialité, estimation du coût, panel, matrice de convergence.
+- « audit Sol sur ce PRD », « contredis cette décision avec Kimi » → cadrage, contrôle de confidentialité, estimation du coût, appel du modèle nommé, réponse intégrale. Un second avis = un second appel, avec un autre modèle.
 
-Panel en ligne de commande :
+En ligne de commande :
 ```
-node outils/panel.mjs --mode audit --fichier prd.md --contexte "critères..." --estimer
-node outils/panel.mjs --mode contradiction --fichier decision.md --modeles sol,deepseek,kimi
+node outils/avocat.mjs --modele sol --mode audit --fichier prd.md --contexte "critères..." --estimer
+node outils/avocat.mjs --modele kimi --mode contradiction --fichier decision.md --sujet choix-hebergement
 ```
-Ordre de grandeur mesuré : un audit à 5 modèles sur ~5 000 jetons coûte environ 0,37 $, dont 0,20 $ pour Fable. Lancer Fable et Opus en sous-agents dans Claude Code supprime cette part.
+Ordre de grandeur pour ~5 000 jetons en entrée : DeepSeek ≈ 0,01 $, Kimi et Sol ≈ 0,04 $, Opus ≈ 0,08 $, Fable ≈ 0,20 $. Fable et Opus appelés en sous-agents dans Claude Code ne passent pas par OpenRouter. Les revues s'accumulent dans `_avocat/<sujet>/`.
 
 ## Revue automatique des PR
 
-`.github/workflows/revue-sol.yml` lance les tests puis un audit par GPT-6.1 Sol des fichiers modifiés, et le poste en commentaire de la PR.
+`.github/workflows/revue-sol.yml` lance les tests puis un audit des fichiers modifiés par GPT-6.1 Sol, et le poste en commentaire de la PR.
 - Secret de dépôt requis : `OPENROUTER_API_KEY`.
-- Autres modèles : variable de dépôt `PANEL_MODELES`, par exemple `sol,deepseek,kimi`.
+- Autre modèle : variable de dépôt `AVOCAT_MODELE`, par exemple `kimi`.
 
 ## Garde-fous
 
-- Aucune donnée de santé ni nominative n'est envoyée au panel : `panel.mjs` bloque les motifs évidents, et la skill impose une relecture humaine. DeepSeek et Kimi sont des fournisseurs tiers ; les requêtes demandent `data_collection: deny` à OpenRouter.
+- Aucune donnée de santé ni nominative n'est envoyée aux modèles externes : `avocat.mjs` bloque les motifs évidents, et la skill impose une relecture humaine. DeepSeek et Kimi sont des fournisseurs tiers ; les requêtes demandent `data_collection: deny` à OpenRouter.
 - Aucun agent d'essaim n'écrit dans un système de production : il propose, l'humain exécute.
-- Chaque déploiement d'essaim et chaque panel est validé par l'humain avant lancement.
+- Chaque déploiement d'essaim et chaque appel externe est validé par l'humain avant lancement.
 
 ## Structure
 
 ```
 skills/essaim/SKILL.md            skill primaire (annexe : milieu.mjs embarqué)
-skills/avocat-du-diable/SKILL.md  panel multi-modèles
+skills/avocat-du-diable/SKILL.md  audit / contradiction par un modèle choisi
 agents/                           fourrageur, validateur, critique (sous-agents Claude Code)
 outils/milieu.mjs                 milieu stigmergique
-outils/panel.mjs                  panel OpenRouter
+outils/avocat.mjs                 appel OpenRouter d'un modèle
 outils/construire-skill.mjs       resynchronise l'annexe de la skill après modification de milieu.mjs
 tests/                            node --test "tests/*.test.mjs"
 install.ps1                       bootstrap Windows

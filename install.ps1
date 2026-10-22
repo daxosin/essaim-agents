@@ -35,7 +35,7 @@ $Cibles = @(
   @{ De = 'agents\validateur.md';             Vers = Join-Path $Base 'agents\validateur.md' },
   @{ De = 'agents\critique.md';               Vers = Join-Path $Base 'agents\critique.md' },
   @{ De = 'outils\milieu.mjs';                Vers = Join-Path $Outils 'milieu.mjs' },
-  @{ De = 'outils\panel.mjs';                 Vers = Join-Path $Outils 'panel.mjs' }
+  @{ De = 'outils\avocat.mjs';                Vers = Join-Path $Outils 'avocat.mjs' }
 )
 
 # 3. Copie, avec sauvegarde de toute version locale différente
@@ -51,11 +51,11 @@ foreach ($c in $Cibles) {
   Write-Host "  installé   : $($c.Vers)"
 }
 
-# 4. Le milieu et les sorties du panel ne se commitent pas
+# 4. Le milieu et les revues ne se commitent pas
 if (-not $Global) {
   $gi = Join-Path $Projet '.gitignore'
   $deja = if (Test-Path $gi) { Get-Content $gi } else { @() }
-  foreach ($l in @('_milieu/', '_panel/')) {
+  foreach ($l in @('_milieu/', '_avocat/')) {
     if ($deja -notcontains $l) { [IO.File]::AppendAllText($gi, "$l`n", $Utf8); Write-Host "  .gitignore : $l" }
   }
 }
@@ -70,4 +70,4 @@ if (-not $env:OPENROUTER_API_KEY -and -not [Environment]::GetEnvironmentVariable
   Write-Host "`nOPENROUTER_API_KEY absente. Pour l'enregistrer (une fois, puis rouvrir le terminal) :" -ForegroundColor Yellow
   Write-Host '  [Environment]::SetEnvironmentVariable("OPENROUTER_API_KEY", "sk-or-...", "User")'
 }
-Write-Host "`nTerminé. Dans Claude Code : « essaim » pour qualifier un travail, « avocat du diable » pour un panel." -ForegroundColor Green
+Write-Host "`nTerminé. Dans Claude Code : « essaim » pour qualifier un travail, « audit Sol », « audit Kimi »... pour un avocat du diable." -ForegroundColor Green

@@ -6,11 +6,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { composer, resoudre, detecterSensible, MODELES } from '../outils/panel.mjs';
+import { composer, resoudre, detecterSensible, lireArguments, nomSujet, MODELES } from '../outils/avocat.mjs';
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
 const MILIEU = path.join(ICI, '..', 'outils', 'milieu.mjs');
-const PANEL = path.join(ICI, '..', 'outils', 'panel.mjs');
+const AVOCAT = path.join(ICI, '..', 'outils', 'avocat.mjs');
 
 function bac() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'milieu-'));
@@ -71,37 +71,52 @@ test('noms d’agent et de mission validés', () => {
   assert.notEqual(m('deposer', 'n', '../x', 'T').status, 0);
 });
 
-test('panel : prompt identique et complet', () => {
+test('avocat : prompt complet, modes contrôlés', () => {
   const p = composer({ mode: 'audit', fichiers: [{ nom: 'a.md', contenu: 'X' }], contexte: 'critère' });
   assert.match(p.systeme, /TROUVER LES ERREURS/);
   assert.match(p.utilisateur, /critère[\s\S]*a\.md[\s\S]*X/);
+  assert.match(composer({ mode: 'contradiction', fichiers: [] }).systeme, /MEILLEUR CAS CONTRE/);
   assert.throws(() => composer({ mode: 'autre', fichiers: [] }));
 });
 
-test('panel : alias, mode pro et identifiants bruts', () => {
-  assert.equal(resoudre('sol', true)[0].id, MODELES.sol.pro);
-  assert.equal(resoudre('kimi', true)[0].id, MODELES.kimi.id);
-  assert.equal(resoudre('x-ai/grok-9')[0].id, 'x-ai/grok-9');
+test('avocat : un seul modèle, choisi explicitement', () => {
+  assert.throws(() => resoudre(undefined), /choisir un modèle/);
+  assert.throws(() => resoudre('sol,kimi'), /un seul modèle/);
+  assert.equal(resoudre('sol', true).id, MODELES.sol.pro);
+  assert.equal(resoudre('kimi', true).id, MODELES.kimi.id);
+  assert.equal(resoudre('x-ai/grok-9').id, 'x-ai/grok-9');
   assert.throws(() => resoudre('inconnu'));
+  assert.throws(() => resoudre('../../etc'));
 });
 
-test('panel : détection de données sensibles', () => {
+test('avocat : arguments et nom de sujet', () => {
+  assert.throws(() => lireArguments(['--modele']), /valeur manquante/);
+  assert.throws(() => lireArguments(['--modele', '--estimer']), /valeur manquante/);
+  assert.equal(nomSujet('../PRD Agent sécurité'), 'PRD-Agent-securite');
+  assert.equal(nomSujet(''), 'sans-sujet');
+});
+
+test('avocat : détection de données sensibles', () => {
   assert.deepEqual(detecterSensible('Code propre, rien à signaler.'), []);
   assert.ok(detecterSensible('NIR 1 85 05 78 006 084 36').length);
   assert.ok(detecterSensible('contact : jean.dupont@exemple.fr').length);
+  assert.ok(detecterSensible('tel +33 6 12 34 56 78').length);
   assert.ok(detecterSensible('Le patient a reçu').length);
 });
 
-test('panel : arrêt sans clé et blocage des données sensibles', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'panel-'));
+test('avocat : arrêt sans modèle, sans clé, ou sur données sensibles', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'avocat-'));
   const f = path.join(dir, 'a.md');
   fs.writeFileSync(f, 'Plan neutre.');
   const env = { ...process.env, OPENROUTER_API_KEY: '' };
-  const r = spawnSync(process.execPath, [PANEL, '--fichier', f, '--sortie', path.join(dir, 'o')], { env, encoding: 'utf8' });
-  assert.match(r.stderr, /OPENROUTER_API_KEY/);
+  const lancer = (...a) => spawnSync(process.execPath, [AVOCAT, ...a], { env, cwd: dir, encoding: 'utf8' });
+  assert.match(lancer('--fichier', f).stderr, /choisir un modèle/);
+  assert.match(lancer('--modele', 'sol', '--fichier', f).stderr, /OPENROUTER_API_KEY/);
+  const p = lancer('--fichier', f, '--sujet', 'essai', '--prompt-seul');
+  assert.equal(p.status, 0);
+  assert.ok(fs.existsSync(path.join(dir, p.stdout.trim())));
   fs.writeFileSync(f, 'Le patient né le 3 mars.');
-  const s = spawnSync(process.execPath, [PANEL, '--fichier', f], { env, encoding: 'utf8' });
-  assert.match(s.stderr, /ARRÊT/);
+  assert.match(lancer('--modele', 'sol', '--fichier', f).stderr, /ARRÊT/);
 });
 
 test('la skill essaim embarque la version courante de milieu.mjs', () => {
