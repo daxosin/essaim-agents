@@ -7,7 +7,7 @@
 // Sortie : _avocat/<sujet>/<horodatage>-<modele>-<mode>.md ; journal.jsonl dans le même dossier.
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import os from 'node:os';
 
 export const MODELES = {
   sol:      { id: 'openai/gpt-6.1-sol',            pro: 'openai/gpt-6.1-sol-pro', nom: 'GPT-6.1 Sol' },
@@ -18,6 +18,9 @@ export const MODELES = {
 };
 const MAX_CARACTERES = 400_000;
 const DELAI_MS = Number(process.env.AVOCAT_DELAI_MS || 600_000);
+// Plafond de dépense mensuel, tous projets confondus (registre global). 0 ou absent = pas de plafond.
+const PLAFOND_MOIS_USD = Number(process.env.AVOCAT_PLAFOND_MOIS_USD || 0);
+const REGISTRE = process.env.AVOCAT_REGISTRE || path.join(os.homedir(), '.claude', 'avocat-depenses.jsonl');
 
 export const CONSIGNES = {
   audit: `Tu es auditeur indépendant. Tu reçois un livrable et, éventuellement, son contexte et ses critères.
@@ -61,7 +64,10 @@ const SENSIBLES = [
   [/\b[12]\s?\d{2}\s?(0[1-9]|1[0-2])\s?(\d{2}|2[AB])\s?\d{3}\s?\d{3}(\s?\d{2})?\b/, 'numéro de sécurité sociale'],
   [/[\w.+-]+@[\w-]+\.[\w.]+/, 'adresse e-mail'],
   [/(?:\+33\s?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b/, 'numéro de téléphone'],
-  [/\b(patient|patiente|ordonnance de M|né le|née le|date de naissance)\b/i, 'mention de patient ou d’identité'],
+  [/\b(patients?|patientes?|ordonnance de M|né le|née le|date de naissance)\b/i, 'mention de patient ou d’identité'],
+  [/\b(M\.|Mme|Mlle|Monsieur|Madame)\s+[A-ZÀ-Ý][a-zà-ÿ-]+/, 'civilité suivie d’un nom'],
+  [/\b(0?[1-9]|[12]\d|3[01])\/(0?[1-9]|1[0-2])\/(19|20)\d{2}\b/, 'date complète (naissance ?)'],
+  [/\bFR\d{2}(\s?[0-9A-Z]{4}){5}/, 'IBAN'],
 ];
 
 const OPTIONS_BOOLEENNES = ['--pro', '--estimer', '--prompt-seul', '--confirme-anonymise', '--force'];
@@ -88,7 +94,12 @@ export function lireArguments(argv) {
 
 export function composer({ mode, fichiers, contexte }) {
   if (!CONSIGNES[mode]) throw new Error(`mode inconnu : ${mode} (audit | contradiction)`);
-  const blocs = fichiers.map(f => `### Fichier : ${f.nom}\n~~~~\n${f.contenu}\n~~~~`).join('\n\n');
+  const blocs = fichiers.map(f => {
+    // clôture plus longue que toute suite de « ~ » présente : le contenu ne peut pas fermer le bloc
+    const plusLongue = Math.max(3, ...(f.contenu.match(/~+/g) || []).map(x => x.length));
+    const cloture = '~'.repeat(plusLongue + 1);
+    return `### Fichier : ${f.nom}\n${cloture}\n${f.contenu}\n${cloture}`;
+  }).join('\n\n');
   return { systeme: CONSIGNES[mode],
     utilisateur: `${contexte ? `## Contexte et critères\n${contexte}\n\n` : ''}## Objet à examiner\n${blocs}` };
 }
@@ -96,13 +107,24 @@ export function composer({ mode, fichiers, contexte }) {
 export function resoudre(alias, pro) {
   if (!alias) throw new Error(`choisir un modèle : --modele ${Object.keys(MODELES).join(' | ')} (ou identifiant OpenRouter)`);
   if (alias.includes(',')) throw new Error('un seul modèle par appel');
-  if (MODELES[alias]) return { alias, id: pro && MODELES[alias].pro ? MODELES[alias].pro : MODELES[alias].id, nom: MODELES[alias].nom };
+  if (MODELES[alias]) {
+    if (pro && !MODELES[alias].pro) console.error(`avertissement : pas de variante « pro » pour ${alias}, modèle standard utilisé`);
+    return { alias, id: pro && MODELES[alias].pro ? MODELES[alias].pro : MODELES[alias].id, nom: MODELES[alias].nom };
+  }
   if (/^[\w.-]+\/[\w.:-]+$/.test(alias)) return { alias: alias.replace(/[^\w.-]+/g, '_'), id: alias, nom: alias };
   throw new Error(`modèle inconnu : ${alias} (${Object.keys(MODELES).join(', ')}, ou identifiant OpenRouter complet)`);
 }
 
 export function detecterSensible(texte) {
   return SENSIBLES.filter(([re]) => re.test(texte)).map(([, nom]) => nom);
+}
+
+export function depenseDuMois(registre = REGISTRE, maintenant = new Date()) {
+  if (!fs.existsSync(registre)) return 0;
+  const mois = maintenant.toISOString().slice(0, 7);
+  return fs.readFileSync(registre, 'utf8').split('\n').reduce((s, l) => {
+    try { const e = JSON.parse(l); return e.date?.startsWith(mois) ? s + (Number(e.cout_usd) || 0) : s; } catch { return s; }
+  }, 0);
 }
 
 export const nomSujet = s => (s || 'sans-sujet').normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -140,7 +162,8 @@ async function interroger(modele, prompt, cle) {
 async function principal() {
   const o = lireArguments(process.argv.slice(2));
   if (!o.fichier.length && !o.contexte) throw new Error('rien à examiner : --fichier et/ou --contexte');
-  const fichiers = o.fichier.map(f => ({ nom: path.basename(f), contenu: fs.readFileSync(f, 'utf8') }));
+  // noms relatifs au dossier courant : deux fichiers homonymes restent distincts
+  const fichiers = o.fichier.map(f => ({ nom: path.relative(process.cwd(), path.resolve(f)).replace(/\\/g, '/'), contenu: fs.readFileSync(f, 'utf8') }));
   const prompt = composer({ mode: o.mode, fichiers, contexte: o.contexte });
   const taille = prompt.systeme.length + prompt.utilisateur.length;
 
@@ -152,7 +175,7 @@ async function principal() {
     throw new Error(`objet trop volumineux (${taille} caractères > ${MAX_CARACTERES}) ; découper, ou --force`);
 
   const dossier = path.join('_avocat', nomSujet(o.sujet || (o.fichier[0] && path.parse(o.fichier[0]).name)));
-  const horodatage = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const horodatage = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '-' + Math.random().toString(36).slice(2, 6);
 
   if (o.promptSeul) {
     fs.mkdirSync(dossier, { recursive: true });
@@ -166,11 +189,15 @@ async function principal() {
     const p = await tarif(modele.id);
     const entree = Math.ceil(taille / 3.5), sortieEst = 3000;
     const c = entree * Number(p.prompt) + sortieEst * Number(p.completion);
-    return console.log(`${modele.nom} : ~${entree} jetons entrée + ~${sortieEst} sortie ≈ ${c.toFixed(3)} $ (raisonnement non compté)`);
+    const dm = depenseDuMois();
+    return console.log(`${modele.nom} : ~${entree} jetons entrée + ~${sortieEst} sortie ≈ ${c.toFixed(3)} $ (raisonnement non compté)` +
+      `\nDépensé ce mois : ${dm.toFixed(3)} $${PLAFOND_MOIS_USD ? ` / plafond ${PLAFOND_MOIS_USD} $` : ''}`);
   }
 
   const cle = process.env.OPENROUTER_API_KEY;
   if (!cle) throw new Error('OPENROUTER_API_KEY absente de l’environnement');
+  if (PLAFOND_MOIS_USD && depenseDuMois() >= PLAFOND_MOIS_USD)
+    throw new Error(`PLAFOND MENSUEL atteint (${depenseDuMois().toFixed(3)} $ / ${PLAFOND_MOIS_USD} $) — relever AVOCAT_PLAFOND_MOIS_USD si c'est voulu`);
   const r = await interroger(modele, prompt, cle);
 
   fs.mkdirSync(dossier, { recursive: true });
@@ -179,8 +206,12 @@ async function principal() {
   const { texte, ...meta } = r;
   fs.appendFileSync(path.join(dossier, 'journal.jsonl'),
     JSON.stringify({ date: new Date().toISOString(), modele: modele.id, mode: o.mode, fichiers: o.fichier, sortie: path.basename(f), ...meta }) + '\n');
+  fs.mkdirSync(path.dirname(REGISTRE), { recursive: true });
+  fs.appendFileSync(REGISTRE, JSON.stringify({ date: new Date().toISOString(), modele: modele.id, mode: o.mode, sujet: path.basename(dossier), cout_usd: r.cout_usd }) + '\n');
   console.log(`${f}  ·  ${r.duree_s} s  ·  ${r.cout_usd != null ? r.cout_usd.toFixed(3) + ' $' : 'coût n/c'}`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href)
-  principal().catch(e => { console.error(e.message); process.exit(1); });
+const estPrincipal = () => {
+  try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(new URL(import.meta.url)); } catch { return false; }
+};
+if (process.argv[1] && estPrincipal()) principal().catch(e => { console.error(e.message); process.exit(1); });

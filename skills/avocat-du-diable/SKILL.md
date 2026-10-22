@@ -45,7 +45,9 @@ Pour un modèle passant par OpenRouter :
 ```
 node outils/avocat.mjs --modele <alias> --mode <mode> --fichier <f> --contexte "<critères>" --estimer
 ```
-Présenter en une ligne : modèle, mode, objet, coût estimé. Lancer seulement après le « go » d'Emmanuel.
+Présenter en une ligne : modèle, mode, objet, coût estimé, dépense du mois. Lancer seulement après le « go » d'Emmanuel.
+
+Plafond mensuel, tous projets confondus : variable `AVOCAT_PLAFOND_MOIS_USD`. Au plafond, `avocat.mjs` refuse l'appel ; ne jamais relever la variable sans qu'Emmanuel le demande. Registre des dépenses : `~/.claude/avocat-depenses.jsonl`.
 
 ## Étape 4 — Lancer
 

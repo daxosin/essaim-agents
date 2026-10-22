@@ -1,0 +1,16 @@
+{
+  "_lisez_moi": "Règles du garde mécanique (outils/garde-essaim.mjs). Chemins relatifs = par rapport à la racine du projet ; « ~ » = dossier personnel. Les listes remplacent celles par défaut : recopier les règles par défaut à conserver. Expressions régulières, chemins écrits avec « / ».",
+  "toujours": {
+    "racines_ecriture": ["~"]
+  },
+  "sous_agents": {
+    "racines_ecriture": [".", "~/Desktop/claude code/obsidian/vault/inbox"],
+    "commandes_interdites": [
+      "\\bsupabase\\b", "\\bpsql\\b", "supabase\\.co", "\\bpg_dump\\b",
+      "\\bvercel\\b.*\\b(deploy|--prod|env\\s+(add|rm))\\b", "\\bgit\\s+push\\b", "\\bgh\\s+(pr\\s+merge|release|repo\\s+delete)\\b",
+      "\\bnpm\\s+publish\\b", "Remove-Item\\b.*-Recurse", "\\brm\\s+-[a-z]*r",
+      "\\bcurl\\b.*-X\\s*(POST|PUT|PATCH|DELETE)", "Invoke-(RestMethod|WebRequest)\\b.*-Method\\s+(Post|Put|Patch|Delete)",
+      "praq", "lqo"
+    ]
+  }
+}
