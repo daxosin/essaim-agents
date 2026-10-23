@@ -208,7 +208,7 @@ export function depenseDuMois(registre = REGISTRE, maintenant = new Date()) {
   }, 0);
 }
 
-export const nomSujet = s => (s || 'sans-sujet').normalize('NFD').replace(/[̀-ͯ]/g, '')
+export const nomSujet = s => (s || 'sans-sujet').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/[^\w.-]+/g, '-').replace(/^[.-]+|[.-]+$/g, '').slice(0, 60) || 'sans-sujet';
 
 async function tarif(id) {
