@@ -1,0 +1,52 @@
+# Revue d'une PR par UN modèle, déclenchée à la main : poser l'étiquette « revue:sol », « revue:kimi »,
+# « revue:deepseek », « revue:fable » ou « revue:opus » sur la PR.
+# Poser l'étiquette vaut confirmation humaine que la PR ne contient aucune donnée personnelle ou de santé :
+# c'est pourquoi le filtre est levé (--confirme-anonymise) dans ce seul contexte.
+# Prérequis : secret de dépôt OPENROUTER_API_KEY.
+name: Revue avocat du diable
+on:
+  pull_request:
+    types: [labeled]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  revue:
+    if: startsWith(github.event.label.name, 'revue:') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Tests
+        run: node --test tests/*.test.mjs
+      - name: Revue
+        continue-on-error: true
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          ETIQUETTE: ${{ github.event.label.name }}
+        run: |
+          MODELE="${ETIQUETTE#revue:}"
+          case "$MODELE" in sol|kimi|deepseek|fable|opus) ;; *) echo "Modèle inconnu : $MODELE"; exit 1;; esac
+          if [ -z "$OPENROUTER_API_KEY" ]; then echo "Secret OPENROUTER_API_KEY absent."; exit 1; fi
+          ARGS=()
+          while IFS= read -r -d '' f; do ARGS+=(--fichier "./$f"); done < <(git diff -z --name-only --diff-filter=AM "$BASE" HEAD -- '*.md' '*.mjs' '*.ps1' '*.yml' '*.json')
+          if [ ${#ARGS[@]} -eq 0 ]; then echo "Aucun fichier à revoir."; exit 0; fi
+          node outils/avocat.mjs --modele "$MODELE" --mode audit "${ARGS[@]}" --sujet pr --confirme-anonymise \
+            --contexte "Dépôt de skills et d'outils pour essaims de sous-agents Claude. Critères : exactitude, robustesse en concurrence, sécurité (secrets, injection de chemins, contournement du garde), cohérence entre les skills et les outils, portabilité Windows (PowerShell 5.1 et 7)."
+      - name: Commentaire
+        if: hashFiles('_avocat/pr/journal.jsonl') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          ETIQUETTE: ${{ github.event.label.name }}
+        run: |
+          {
+            echo "## Revue avocat du diable — $ETIQUETTE"
+            echo
+            echo "> Avis d'un modèle, non vérifié : il peut se tromper, et le contenu de la PR peut l'avoir influencé. À relire avant d'agir."
+            for f in _avocat/pr/*-audit.md; do echo; cat "$f"; done
+          } > revue.md
+          gh pr comment "$PR" --body-file revue.md
