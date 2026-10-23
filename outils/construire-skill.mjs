@@ -1,19 +1,27 @@
 #!/usr/bin/env node
-// Resynchronise l'annexe de skills/essaim/SKILL.md avec outils/milieu.mjs.
-// À lancer après toute modification de milieu.mjs : node outils/construire-skill.mjs
+// Resynchronise les annexes des skills avec leurs outils :
+//   skills/essaim/SKILL.md           ← outils/milieu.mjs
+//   skills/avocat-du-diable/SKILL.md ← outils/avocat.mjs
+// À lancer après toute modification d'un de ces outils : node outils/construire-skill.mjs
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const RACINE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const skill = path.join(RACINE, 'skills', 'essaim', 'SKILL.md');
-const code = fs.readFileSync(path.join(RACINE, 'outils', 'milieu.mjs'), 'utf8').trimEnd();
-const texte = fs.readFileSync(skill, 'utf8');
-const marque = '## Annexe — milieu.mjs';
-const i = texte.indexOf(marque);
-if (i < 0) throw new Error(`section « ${marque} » introuvable`);
-const debut = texte.indexOf('```js\n', i);
-const fin = texte.lastIndexOf('\n```');
-if (debut < 0 || fin < debut) throw new Error('bloc ```js de l’annexe introuvable');
-fs.writeFileSync(skill, texte.slice(0, debut + 6) + code + texte.slice(fin));
-console.log('annexe resynchronisée');
+const PAIRES = [['essaim', 'milieu.mjs'], ['avocat-du-diable', 'avocat.mjs']];
+
+for (const [skillNom, outil] of PAIRES) {
+  const skill = path.join(RACINE, 'skills', skillNom, 'SKILL.md');
+  const code = fs.readFileSync(path.join(RACINE, 'outils', outil), 'utf8').trimEnd();
+  const texte = fs.readFileSync(skill, 'utf8');
+  const marque = `## Annexe — ${outil}`;
+  const i = texte.indexOf(marque);
+  if (i < 0) throw new Error(`${skillNom} : section « ${marque} » introuvable`);
+  const debut = texte.indexOf('```js\n', i);
+  const fin = texte.lastIndexOf('\n```');
+  if (debut < 0 || fin < debut) throw new Error(`${skillNom} : bloc \`\`\`js de l’annexe introuvable`);
+  const corps = texte.slice(debut + 6, fin);
+  const nouveau = texte.slice(0, debut + 6) + code + texte.slice(fin);
+  fs.writeFileSync(skill, nouveau);
+  console.log(`${skillNom} : annexe ${corps === code ? 'déjà à jour' : 'resynchronisée'}`);
+}

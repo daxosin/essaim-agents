@@ -315,10 +315,12 @@ test('journal : validation et statistiques', () => {
 
 // ───────────────────────── cohérence ─────────────────────────
 
-test('la skill essaim embarque la version courante de milieu.mjs', () => {
-  const skill = fs.readFileSync(path.join(ICI, '..', 'skills', 'essaim', 'SKILL.md'), 'utf8');
-  assert.ok(skill.includes(fs.readFileSync(MILIEU, 'utf8').trimEnd()), 'annexe désynchronisée : node outils/construire-skill.mjs');
-});
+for (const [skillNom, outil] of [['essaim', 'milieu.mjs'], ['avocat-du-diable', 'avocat.mjs']]) {
+  test(`la skill ${skillNom} embarque la version courante de ${outil}`, () => {
+    const skill = fs.readFileSync(path.join(ICI, '..', 'skills', skillNom, 'SKILL.md'), 'utf8');
+    assert.ok(skill.includes(fs.readFileSync(OUTIL(outil), 'utf8').trimEnd()), 'annexe désynchronisée : node outils/construire-skill.mjs');
+  });
+}
 
 test('les commandes citées dans les skills et agents existent dans milieu.mjs', () => {
   const aide = spawnSync(process.execPath, [MILIEU, 'aide'], { encoding: 'utf8' }).stdout;
